@@ -5,7 +5,6 @@ from scipy.optimize import fsolve
 
 # ---------------------------- COMMON PARAMETERS ----------------------------
 L = 50e-3  # length (m)
-T_infinity = 407.37  # Free stream temperature (K)
 T_wall = 297.75  # Wall temperature (K)
 cp = 1005  # Specific heat capacity (J/kg.K)
 k_air = 0.025  # Thermal conductivity of air (W/m.K)
@@ -80,31 +79,30 @@ def calculate_velocity_profile(s, s_total, P_LE, P_TE, T_LE, T_TE, gamma, R):
     for si in s:
         # Calculate local pressure and temperature
         Pi = pressure_distribution(si, s_total, P_LE, P_TE)
-        Ti = temperature_distribution(si, s_total, T_LE, T_TE)
+        
+        # Calculate local temperature from isentropic relations
+        Ti = calculate_temperature_from_pressure_ratio(Pi, P_LE, T_LE, gamma)
         
         # Calculate local Mach number
         Mi = calculate_mach_from_pressure_ratio(Pi, P_LE, gamma)
         
-        # Calculate local temperature from isentropic relations (alternative method)
-        Ti_isen = calculate_temperature_from_pressure_ratio(Pi, P_LE, T_LE, gamma)
-        
         # Calculate local velocity
-        Vi = calculate_velocity(Mi, Ti_isen, gamma, R)
+        Vi = calculate_velocity(Mi, Ti, gamma, R)
         
         # Calculate local density and viscosity
-        rho_i = calculate_density(Pi, Ti_isen, R)
-        mu_i = calculate_viscosity(Ti_isen)
+        rho_i = calculate_density(Pi, Ti, R)
+        mu_i = calculate_viscosity(Ti)
         
         M.append(Mi)
         V.append(Vi)
         P.append(Pi)
-        T.append(Ti_isen)  # Using isentropic temperature
+        T.append(Ti)
         rho.append(rho_i)
         mu.append(mu_i)
         
     return np.array(M), np.array(V), np.array(P), np.array(T), np.array(rho), np.array(mu)
 
-def calculate_heat_transfer(s, L, rho, V, mu, T, Pr, k_air, T_infinity, T_wall):
+def calculate_heat_transfer(s, L, rho, V, mu, T, Pr, k_air, T_wall):
     h = []
     q = []
     Re_values = []
@@ -132,10 +130,10 @@ def calculate_heat_transfer(s, L, rho, V, mu, T, Pr, k_air, T_infinity, T_wall):
         h_val = (Nu * k_air) / s[i] if s[i] > 0 else 0
         h.append(h_val)
         
-        # Calculate heat transfer for each segment
+        # Calculate heat transfer for each segment using local temperature T[i] instead of T_infinity
         ds = s[i] - s[i-1]
         dA = L * ds
-        q_val = h_val * dA * (T_infinity - T_wall)
+        q_val = h_val * dA * (T[i] - T_wall)
         q.append(q_val)
             
         Re_values.append(Re)
@@ -211,10 +209,10 @@ Pr_ps = (cp * mu_ps) / k_air
 Pr_ss = (cp * mu_ss) / k_air
 
 h_ps, q_ps, s_ps_q, Re_ps, Nu_ps, V_ps_q, regime_ps, T_ps_q = calculate_heat_transfer(
-    s_ps, L, rho_ps, V_ps, mu_ps, T_ps, Pr_ps, k_air, T_infinity, T_wall)
+    s_ps, L, rho_ps, V_ps, mu_ps, T_ps, Pr_ps, k_air, T_wall)
 
 h_ss, q_ss, s_ss_q, Re_ss, Nu_ss, V_ss_q, regime_ss, T_ss_q = calculate_heat_transfer(
-    s_ss, L, rho_ss, V_ss, mu_ss, T_ss, Pr_ss, k_air, T_infinity, T_wall)
+    s_ss, L, rho_ss, V_ss, mu_ss, T_ss, Pr_ss, k_air, T_wall)
 
 # ---------------------------- PLOTTING ----------------------------
 fig, axs = plt.subplots(3, 3, figsize=(30, 20))
@@ -288,6 +286,7 @@ axs[2,2].set(xlabel="Arc Length [m]", ylabel="Viscosity [kg/m·s]", title="Visco
 axs[2,2].grid(True)
 axs[2,2].legend()
 
+
 # Total heat transfer
 total_q_ps = sum(q_ps)
 total_q_ss = sum(q_ss)
@@ -296,11 +295,5 @@ print(f"Total Heat Transfer - Suction Side: {total_q_ss:.2f} W")
 print(f"Total Heat Transfer: {total_q_ps + total_q_ss:.2f} W")
 
 plt.tight_layout()
-
-plt.savefig('airfoil_analysis_higquality.png', 
-           dpi=1000, 
-           bbox_inches='tight', 
-           format='png', 
-           facecolor='white')
-
+plt.savefig('airfoil_analysis_highquality.png', dpi=1000, bbox_inches='tight', format='png', facecolor='white')
 plt.show()
